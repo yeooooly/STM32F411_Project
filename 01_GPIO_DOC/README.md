@@ -28,6 +28,16 @@ NUCLEO-F411RE 보드에서 GPIO 레지스터를 디버거로 직접 확인하고
 - Write → BSRR / ODR → Output control → P-MOS / N-MOS → I/O 핀
 - 출력 모드에서도 입력 드라이버(슈미트 트리거)는 켜져 있어서 **IDR 로 핀 상태를 읽을 수 있음**
 
+### 코드에서 LED 까지 전체 흐름
+
+![MCU Core → Bus → GPIO → LED](img/R3_mcu_core_to_led.png)
+
+1. **Flash** : PC 가 가리키는 `HAL_GPIO_WritePin(...)` 명령을 읽음
+2. **Core 레지스터** : R0 = 포트 주소(`0x4002_0000`), R1 = 핀 번호, R2 = 상태 를 담아 함수 호출 (LR 에 돌아올 주소 저장)
+3. **Bus Matrix (AHB)** : Load / Store 명령으로 GPIO 레지스터(SFR) 에 접근
+4. **GPIO 레지스터** : MODER 로 출력 모드, BSRR / ODR 로 출력 값 설정
+5. **I/O 핀** : Output control → P-MOS / N-MOS → 핀 전압 변화 → **LD2 (PA5)** 점등
+
 ---
 
 ## 1. GPIOA 레지스터 맵
