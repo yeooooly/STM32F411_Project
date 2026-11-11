@@ -6,6 +6,27 @@ NUCLEO-F411RE 보드에서 GPIO 레지스터를 디버거로 직접 확인하고
   - Datasheet : STM32F411xC/xE (DS10314)
   - Reference Manual : RM0383 (레지스터 비트 설명)
   - Board : UM1724 (NUCLEO 보드 회로 / LED 연결)
+  - 수업 자료 : [gotree94/STM32 GPIO_DOC](https://github.com/gotree94/STM32/tree/main/NUCLEO_F411RE/GPIO_DOC)
+
+---
+
+## 0. GPIO 개요
+
+- GPIO 는 **AHB1 버스**에 연결 → 사용 전 RCC 에서 클럭을 켜야 동작 (`__HAL_RCC_GPIOA_CLK_ENABLE()`)
+- 포트 하나당 최대 16개 핀, 핀마다 모드를 따로 설정
+- 출력 : Push-Pull / Open-Drain, 입력 : Floating / Pull-up / Pull-down, 그 외 Alternate Function / Analog
+- ODR 은 직접 쓰거나 BSRR 로 비트 단위 Set / Reset
+
+### I/O 포트 비트 기본 구조 (RM0383 Figure 16)
+
+![I/O 포트 기본 구조](img/R1_gpio_structure.png)
+
+### 출력 구성 (RM0383 Figure 19)
+
+![출력 구성](img/R2_gpio_output.png)
+
+- Write → BSRR / ODR → Output control → P-MOS / N-MOS → I/O 핀
+- 출력 모드에서도 입력 드라이버(슈미트 트리거)는 켜져 있어서 **IDR 로 핀 상태를 읽을 수 있음**
 
 ---
 
