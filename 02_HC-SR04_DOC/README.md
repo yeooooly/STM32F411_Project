@@ -198,7 +198,13 @@ void trig(void)
 
 ## 7. 실습 : 거리 측정 (PuTTY 출력)
 
-### 7.1 코드
+### 7.1 CubeMX 설정
+
+<img src="img/H9_cubemx_echo1.png" alt="PA1 ECHO1 설정" width="64%">
+
+- PA1 → GPIO_Input, Label `ECHO1`
+
+### 7.2 코드
 
 ```c
 /* USER CODE BEGIN Includes */
@@ -264,7 +270,7 @@ uint32_t echo(void) {
   }
 ```
 
-### 7.2 PuTTY 측정 결과
+### 7.3 PuTTY 측정 결과
 
 ![PuTTY 거리 측정](img/H8_putty_distance.png)
 
