@@ -130,7 +130,7 @@ void trig(void)
 
 ### 5.2 오실로스코프 측정 결과
 
-<img src="img/H3_scope_trig.jpg" alt="TRIG 파형" width="80%">
+<img src="img/H3_scope_trig.jpg" alt="TRIG 파형" width="56%">
 
 
 - 시간축 1 ms/div 에서 10 µs 펄스는 너무 짧아 **세로선(스파이크)** 처럼 보임
@@ -148,7 +148,7 @@ void trig(void)
   }
 ```
 
-<img src="img/H4_scope_trig_delay200.jpg" alt="TRIG 파형 (HAL_Delay 200)" width="80%">
+<img src="img/H4_scope_trig_delay200.jpg" alt="TRIG 파형 (HAL_Delay 200)" width="56%">
 
 - `HAL_Delay(1)` → `HAL_Delay(200)` 으로 바꾸니 TRIG 파형이 **더 정확하게** 측정됨
 - 시간축 100 µs/div 에서 스파이크가 아니라 **폭이 있는 10 µs 펄스** 모양으로 보임
@@ -186,7 +186,7 @@ void trig(void)
 
 ### 6.3 거리에 따른 ECHO 파형
 
-<img src="img/H6_scope_echo_near.jpg" width="38%"> <img src="img/H7_scope_echo_far.jpg" width="38%">
+<img src="img/H6_scope_echo_near.jpg" width="45%"> <img src="img/H7_scope_echo_far.jpg" width="45%">
 
 | 왼쪽 : 가까울 때 | 오른쪽 : 멀 때 |
 |---|---|
