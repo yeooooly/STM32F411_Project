@@ -11,6 +11,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 - [3. CubeMX 설정](#3-cubemx-설정)
 - [4. 코드](#4-코드)
 - [5. 실습 : TRIG 신호 측정](#5-실습--trig-신호-측정)
+- [6. 실습 : 초음파 센서 연결 후 ECHO 측정](#6-실습--초음파-센서-연결-후-echo-측정)
 
 ---
 
@@ -155,3 +156,36 @@ void trig(void)
 - `HAL_Delay(1)` → `HAL_Delay(200)` 으로 바꾸니 TRIG 파형이 **더 정확하게** 측정됨
 - 시간축 100 µs/div 에서 스파이크가 아니라 **폭이 있는 10 µs 펄스** 모양으로 보임
 - 펄스 높이 약 3.3 V (CH2 2 V/div)
+
+---
+
+## 6. 실습 : 초음파 센서 연결 후 ECHO 측정
+
+### 6.1 코드 수정
+
+```c
+  while (1)
+  {
+    trig();
+    //HAL_Delay(200);
+    delay_us(200);
+  }
+```
+
+- `HAL_Delay(200)` 대신 `delay_us(200)` 으로 TRIG 를 빠르게 반복
+
+### 6.2 센서 연결
+
+![센서 연결](img/H5_sensor_wiring.jpg)
+
+- HC-SR04 센서를 보드에 연결하고 ECHO 신호를 오실로스코프로 측정
+
+### 6.3 거리에 따른 ECHO 파형
+
+<img src="img/H6_scope_echo_near.jpg" width="48%"> <img src="img/H7_scope_echo_far.jpg" width="48%">
+
+| 왼쪽 : 가까울 때 | 오른쪽 : 멀 때 |
+|---|---|
+| ECHO HIGH 폭이 **짧다** | ECHO HIGH 폭이 **길다** |
+
+- 물체가 멀수록 초음파 왕복 시간이 길어져 ECHO HIGH 폭이 길어짐 → 거리에 따른 차이를 눈으로 확인
