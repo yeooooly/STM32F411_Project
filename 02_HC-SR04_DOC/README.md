@@ -12,6 +12,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 - [4. 코드](#4-코드)
 - [5. 실습 : TRIG 신호 측정](#5-실습--trig-신호-측정)
 - [6. 실습 : 초음파 센서 연결 후 ECHO 측정](#6-실습--초음파-센서-연결-후-echo-측정)
+- [7. 실습 : 거리 측정 (PuTTY 출력)](#7-실습--거리-측정-putty-출력)
 
 ---
 
@@ -57,6 +58,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 | 항목 | 설정 | 의미 |
 |---|---|---|
 | PA0 | GPIO_Output, Label `TRIGER1` | Trig 출력 핀 |
+| PA1 | GPIO_Input, Label `ECHO1` | Echo 입력 핀 |
 | PA2 / PA3 | USART2 TX / RX | printf 출력용 |
 | TIM1 Clock Source | Internal Clock | |
 | TIM1 Prescaler | **83** | 84 MHz / (83+1) = **1 MHz** → 1 count = **1 µs** |
@@ -196,3 +198,77 @@ void trig(void)
 | ECHO HIGH 폭이 **짧다** | ECHO HIGH 폭이 **길다** |
 
 - 물체가 멀수록 초음파 왕복 시간이 길어져 ECHO HIGH 폭이 길어짐 → 거리에 따른 차이를 눈으로 확인
+
+---
+
+## 7. 실습 : 거리 측정 (PuTTY 출력)
+
+### 7.1 코드
+
+```c
+/* USER CODE BEGIN Includes */
+#include <stdio.h>
+/* USER CODE END Includes */
+```
+
+```c
+/* USER CODE BEGIN 0 */
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+
+PUTCHAR_PROTOTYPE
+{
+  if (ch == '\n')
+    HAL_UART_Transmit (&huart2, (uint8_t*) "\r", 1, 0xFFFF);
+  HAL_UART_Transmit (&huart2, (uint8_t*) &ch, 1, 0xFFFF);
+
+  return ch;
+}
+
+uint32_t echo(void) {
+    uint32_t start_tick, start_time, end_time;
+
+    // ECHO HIGH 대기 (최대 10ms)
+    start_tick = HAL_GetTick();
+    while (HAL_GPIO_ReadPin(ECHO1_GPIO_Port, ECHO1_Pin) == GPIO_PIN_RESET) {
+        if ((HAL_GetTick() - start_tick) > 10) return 0;
+    }
+    start_time = __HAL_TIM_GET_COUNTER(&htim1);
+
+    // ECHO LOW 대기 (최대 30ms)
+    start_tick = HAL_GetTick();
+    while (HAL_GPIO_ReadPin(ECHO1_GPIO_Port, ECHO1_Pin) == GPIO_PIN_SET) {
+        if ((HAL_GetTick() - start_tick) > 30) return 0;
+    }
+    end_time = __HAL_TIM_GET_COUNTER(&htim1);
+
+    return end_time - start_time;
+}
+/* USER CODE END 0 */
+```
+
+```c
+  /* USER CODE BEGIN 2 */
+  timer_start();
+  printf("Ranging with HC-SR04\n");
+  /* USER CODE END 2 */
+
+  while (1)
+  {
+    trig();
+    echo_time = echo();
+    if (echo_time != 0) {
+        dist = (int)(17 * echo_time / 100);
+        printf("Distance = %d(mm)\n", dist);
+    }
+    else printf("Out of Range!\n");
+    HAL_Delay(250);
+  }
+```
+
+### 7.2 PuTTY 측정 결과
+
+![PuTTY 거리 측정](img/H8_putty_distance.png)
