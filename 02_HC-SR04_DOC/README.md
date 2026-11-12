@@ -121,7 +121,7 @@ void trig(void)
 
 ### 5.1 보드 연결
 
-<img src="img/H2_board_wiring.jpg" alt="보드 연결" width="80%">
+<img src="img/H2_board_wiring.jpg" alt="보드 연결" width="64%">
 
 | 선 | 보드 쪽 | 오실로스코프 쪽 |
 |---|---|---|
@@ -173,7 +173,7 @@ void trig(void)
 
 ### 6.2 센서 연결
 
-<img src="img/H5_sensor_wiring.jpg" alt="센서 연결" width="80%">
+<img src="img/H5_sensor_wiring.jpg" alt="센서 연결" width="64%">
 
 | 센서 핀 | 보드 쪽 |
 |---|---|
