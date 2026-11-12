@@ -18,7 +18,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 
 ## 1. HC-SR04 센서
 
-<img src="img/S1_module.png" width="45%"> <img src="img/S2_schematic.png" width="45%">
+<img src="img/S1_module.png" height="300"> <img src="img/S2_schematic.png" height="300">
 
 ![HC-SR04 Pinout](img/S3_pinout.png)
 
@@ -33,7 +33,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 
 ## 2. 동작 원리
 
-<img src="img/S4_principle.png" width="48%"> <img src="img/S5_timing.png" width="48%">
+<img src="img/S4_principle.png" height="200"> <img src="img/S5_timing.png" height="200">
 
 1. MCU 가 **Trig 에 10 µs HIGH 펄스**를 준다
 2. 센서가 40 kHz 초음파를 8번(8 cycle sonic burst) 쏜다
