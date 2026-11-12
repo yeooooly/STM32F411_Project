@@ -112,24 +112,6 @@ void trig(void)
   }
 ```
 
-### 4.3 printf (USART2) 리타겟
-
-```c
-#ifdef __GNUC__
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-#else
-#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
-#endif
-
-PUTCHAR_PROTOTYPE
-{
-  if (ch == '\n')
-    HAL_UART_Transmit(&huart2, (uint8_t*) "\r", 1, 0xFFFF);
-  HAL_UART_Transmit(&huart2, (uint8_t*) &ch, 1, 0xFFFF);
-  return ch;
-}
-```
-
 ---
 
 ## 5. 실습 : TRIG 신호 측정
