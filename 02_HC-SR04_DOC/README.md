@@ -139,3 +139,19 @@ void trig(void)
 - 펄스 높이 약 3.3 V → PA0 HIGH 출력 확인
 - 주기 약 2 ms = `trig()` (10 µs) + `HAL_Delay(1)`
   - `HAL_Delay(1)` 은 최소 대기 시간을 보장하려고 1 tick 을 더 기다려서 실제로는 약 2 ms
+
+### 5.3 딜레이 200 으로 변경
+
+```c
+  while (1)
+  {
+    trig();
+    HAL_Delay(200);
+  }
+```
+
+![TRIG 파형 (HAL_Delay 200)](img/H4_scope_trig_delay200.jpg)
+
+- `HAL_Delay(1)` → `HAL_Delay(200)` 으로 바꾸니 TRIG 파형이 **더 정확하게** 측정됨
+- 시간축 100 µs/div 에서 스파이크가 아니라 **폭이 있는 10 µs 펄스** 모양으로 보임
+- 펄스 높이 약 3.3 V (CH2 2 V/div)
