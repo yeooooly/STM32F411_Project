@@ -23,7 +23,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 
 | 핀 | 역할 |
 |---|---|
-| VCC | 전원 5 V |
+| VCC | 전원 3.3 V |
 | Trig | 측정 시작 신호 입력 (MCU → 센서) |
 | Echo | 거리에 비례하는 펄스 출력 (센서 → MCU) |
 | GND | 접지 |
@@ -178,7 +178,14 @@ void trig(void)
 
 ![센서 연결](img/H5_sensor_wiring.jpg)
 
-- HC-SR04 센서를 보드에 연결하고 ECHO 신호를 오실로스코프로 측정
+| 센서 핀 | 보드 쪽 |
+|---|---|
+| VCC | **3.3 V** |
+| GND | **GND** |
+| Trig | **A0 (PA0, TRIGER1)** |
+| Echo | **A1 (PA1)** + 오실로스코프 프로브에 같이 연결 |
+
+- ECHO 신호를 오실로스코프로 측정
 
 ### 6.3 거리에 따른 ECHO 파형
 
