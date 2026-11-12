@@ -267,3 +267,5 @@ uint32_t echo(void) {
 ### 7.2 PuTTY 측정 결과
 
 ![PuTTY 거리 측정](img/H8_putty_distance.png)
+
+- 물체와의 거리에 따라 측정값이 바뀌며 정상적으로 동작하는 것을 확인
