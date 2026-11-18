@@ -13,6 +13,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 - [5. 실습 : TRIG 신호 측정](#5-실습--trig-신호-측정)
 - [6. 실습 : 초음파 센서 연결 후 ECHO 측정](#6-실습--초음파-센서-연결-후-echo-측정)
 - [7. 실습 : 거리 측정 (PuTTY 출력)](#7-실습--거리-측정-putty-출력)
+- [8. 실습 : EXTI + 상태 머신 거리 측정 (STEP02)](#8-실습--exti--상태-머신-거리-측정-step02)
 
 ---
 
@@ -275,3 +276,171 @@ uint32_t echo(void) {
 ![PuTTY 거리 측정](img/H8_putty_distance.png)
 
 - 물체와의 거리에 따라 측정값이 바뀌며 정상적으로 동작하는 것을 확인
+
+---
+
+## 8. 실습 : EXTI + 상태 머신 거리 측정 (STEP02)
+
+7번의 폴링 방식(`while` 로 ECHO 대기 + `HAL_Delay`)을 **EXTI 인터럽트 + 비차단 상태 머신** 방식으로 바꾸고, 출력을 CSV 형식으로 확인한 내용 정리
+
+- 수업 자료 : [gotree94/STM32 STEP02_거리측정 (NUCLEO-F411RE)](https://github.com/gotree94/STM32/blob/main/NUCLEO_F411RE/00.F411_TASK_LAB/STEP02_%EA%B1%B0%EB%A6%AC%EC%B8%A1%EC%A0%95.md)
+
+### 8.1 7번과 달라진 점
+
+| 항목 | 7번 (폴링) | 8번 (STEP02) |
+|---|---|---|
+| 타이머 | TIM1 (16비트) | **TIM2** (32비트, 1 tick = 1 µs) |
+| ECHO 측정 | `while` 로 HIGH / LOW 될 때까지 대기 | **EXTI 양쪽 에지 인터럽트**로 시각만 기록 |
+| 측정 주기 | `HAL_Delay(250)` | 200 ms 마다 1회 (5 Hz), `HAL_Delay` 없음 |
+| 출력 | `Distance = ...(mm)` | 1초마다 최근 5개 **중앙값** CSV |
+| TRIG / ECHO 핀 | PA0 / PA1 | **PA1 / PA0** (선 바꿔 연결) |
+
+- ISR 에서는 **시각 기록만** → 거리 계산 / 필터 / 출력은 메인 루프에서 처리
+- 측정 중에도 CPU 가 대기하지 않음 → 다른 작업이 막히지 않음
+
+### 8.2 핀 연결
+
+| HC-SR04 | 보드 쪽 |
+|---|---|
+| Trig | **A1 (PA1)** |
+| Echo | **A0 (PA0)** |
+| VCC / GND | 보드 전원 / GND |
+
+### 8.3 코드 수정
+
+`ultrasonic.c` / `ultrasonic.h` 는 수업 자료 그대로 사용 → `main.c`, `stm32f4xx_it.c` 만 수정
+
+#### 8.3.1 주석 처리 (`main.c`)
+
+- `HIGH`, `LOW`, `echo_time`, `dist` 정의
+- `timer_start()`, `delay_us()`, `trig()`, `echo()` 함수 전체
+- `USER CODE 2` 의 `timer_start()`, `printf("Ranging with HC-SR04\n")`
+- `while` 안의 `trig()` / `echo()` / `HAL_Delay(250)`
+
+#### 8.3.2 추가 (`main.c`)
+
+```c
+/* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include "ultrasonic.h"
+/* USER CODE END Includes */
+```
+
+```c
+/* USER CODE BEGIN PFP */
+static void Sensor_Task(void);
+/* USER CODE END PFP */
+```
+
+```c
+/* USER CODE BEGIN 0 */
+static void Sensor_Task(void)
+{
+  Ultrasonic_Result result;
+
+  Ultrasonic_Task();
+
+  if (Ultrasonic_GetResult(&result) != 0U)
+  {
+    printf("D,%lu,%u,%u,%lu\n",
+           (unsigned long)result.timestamp_ms,
+           (unsigned int)result.distance_mm,
+           (unsigned int)result.valid,
+           (unsigned long)result.errors);
+  }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_0)
+  {
+    Ultrasonic_OnEchoEdge();
+  }
+}
+/* USER CODE END 0 */
+```
+
+```c
+  /* USER CODE BEGIN 2 */
+  Ultrasonic_Init();
+
+  printf("\n=== F411_TASK_LAB Step 2: Ultrasonic ===\n");
+  printf("HC-SR04: TRIG=PA1, ECHO=PA0, 5 Hz sample, 1 Hz median\n");
+  /* USER CODE END 2 */
+
+  while (1)
+  {
+    Sensor_Task();
+  }
+```
+
+#### 8.3.3 추가 (`stm32f4xx_it.c`)
+
+```c
+/* USER CODE BEGIN 1 */
+void EXTI0_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
+}
+/* USER CODE END 1 */
+```
+
+- 흐름 : PA0 에지 → `EXTI0_IRQHandler` → `HAL_GPIO_EXTI_Callback` → `Ultrasonic_OnEchoEdge()`
+
+### 8.4 출력 형식
+
+```text
+D,t_ms,distance_mm,valid,errors
+```
+
+| 필드 | 의미 |
+|---|---|
+| `D` | 거리 데이터 행 |
+| `t_ms` | `HAL_GetTick()` 기준 출력 시각 (ms) |
+| `distance_mm` | 최근 5개 샘플의 중앙값 거리 (mm) |
+| `valid` | 1 = 유효, 0 = 이번 1초 동안 유효 샘플 없음 |
+| `errors` | 누적 오류 횟수 (타임아웃 + 범위 밖 + 펄스 폭 이상) |
+
+### 8.5 시리얼 모니터 결과
+
+```text
+D,6677000,66,1,857
+D,6678000,46,1,857
+D,6679000,63,1,857
+D,6680000,138,1,857
+D,6681000,159,1,857
+D,6682000,227,1,857
+D,6683000,228,1,857
+D,6684000,295,1,857
+D,6685000,316,1,857
+D,6686000,1736,1,857
+D,6687000,1736,1,857
+D,6688000,1736,1,857
+D,6689000,1736,1,857
+D,6690000,1736,1,857
+D,6691000,1736,1,857
+```
+
+| 구간 | distance_mm | 의미 |
+|---|---|---|
+| 6677 ~ 6679 s | 66 → 46 → 63 | 손이 센서 약 5 ~ 7 cm 앞 |
+| 6680 ~ 6685 s | 138 → 316 | 손을 떼면서 약 14 cm → 32 cm 로 멀어짐 |
+| 6686 s ~ | 1736 고정 | 손을 치움 → 뒤쪽 고정 물체까지 약 1.74 m |
+
+- 1초마다 1줄씩 출력, 모든 행 `valid = 1`
+- `errors` 는 리셋 이후 **누적값** → 이 구간 동안 857 에서 증가 없음 → 측정 중 오류 없음
+
+### 8.6 거리에 따른 ECHO 파형
+
+<img src="img/H10_step02_echo_near.jpg" width="32%"> <img src="img/H11_step02_echo_mid.jpg" width="32%"> <img src="img/H12_step02_echo_far.jpg" width="32%">
+
+- 설정 : CH1 = ECHO, 3.00 V/div, 시간축 **250 µs/div**, 트리거 CH1 상승 에지
+
+| 왼쪽 : 가까울 때 | 가운데 : 중간 | 오른쪽 : 멀 때 |
+|---|---|---|
+| HIGH 약 1.7칸 ≈ **0.43 ms** | HIGH 약 4.1칸 ≈ **1.0 ms** | HIGH 가 화면 밖까지 이어짐 → **1.4 ms 이상** |
+| ≈ 7 cm | ≈ 18 cm | ≈ 24 cm 이상 |
+
+- 거리(mm) ≈ 펄스 폭(µs) × 343 / 2000 → 폭은 화면 눈금으로 읽은 대략값
+- 물체가 멀어질수록 ECHO HIGH 폭이 **옆으로 길어짐** (높이는 그대로)
+- TRIG 는 거리와 상관없이 항상 10 µs 펄스 → 거리 정보는 **ECHO 에만** 있음
