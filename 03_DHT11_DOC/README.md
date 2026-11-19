@@ -73,13 +73,38 @@ DHT11:                        ┌─ 80 µs ─┐
 
 ## 3. 배선
 
-| 보드 핀 | 연결 | 이번 실습 |
-|---|---|---|
-| A0 (PA0) | HC-SR04 ECHO | 사용 안 함 |
-| A1 (PA1) | HC-SR04 TRIG | 사용 안 함 |
-| **A2 (PA4)** | **DHT11 S** | 온습도 DATA |
-| 3.3 V | DHT11 + | 전원 |
-| GND | DHT11 − | 접지 |
+<img src="img/D1_board_wiring.jpg" alt="DHT11 + HC-SR04 보드 연결" width="64%">
+
+- 왼쪽 : DHT11 모듈, 위쪽 : HC-SR04 (STEP02 에서 쓰던 그대로 꽂아 둠)
+- 두 센서 모두 보드 왼쪽 Arduino 헤더 **CN6 (전원)** / **CN8 (A0 ~ A5)** 에 연결
+
+### 3.1 DHT11
+
+| DHT11 핀 | 선 색 | 보드 헤더 | MCU 핀 | 코드 |
+|---|---|---|---|---|
+| **S** (DATA) | 흰색 | CN8 **A2** | **PA4** | `#define DHT11_PORT GPIOA` / `#define DHT11_PIN GPIO_PIN_4` |
+| **+** (VCC) | 빨간색 | CN6 **3V3** | - | - |
+| **−** (GND) | 파란색 | CN6 **GND** | - | - |
+
+- `DHT11_SetPinOutput()` / `DHT11_SetPinInput()` 이 PA4 하나를 출력 ↔ 입력으로 바꿔가며 통신
+- 입력일 때 내부 풀업 (`GPIO_PULLUP`) + 모듈 풀업 → 선이 놓여 있으면 HIGH
+
+### 3.2 HC-SR04 (연결만 유지, 이번 코드에서는 사용 안 함)
+
+| HC-SR04 핀 | 보드 헤더 | MCU 핀 | 이번 코드 |
+|---|---|---|---|
+| Echo | CN8 **A0** | PA0 | `HAL_NVIC_DisableIRQ(EXTI0_IRQn)` 로 인터럽트 끔 |
+| Trig | CN8 **A1** | PA1 | 출력 LOW 유지 (CubeMX 초기값) |
+| VCC / GND | CN6 5V / GND | - | - |
+
+- DHT11 을 A0 대신 **A2** 에 꽂아서 초음파 선을 뽑지 않고 같이 둘 수 있음
+
+### 3.3 Arduino 헤더 ↔ MCU 핀
+
+| CN8 | A0 | A1 | **A2** | A3 | A4 | A5 |
+|---|---|---|---|---|---|---|
+| MCU | PA0 | PA1 | **PA4** | PB0 | PC1 | PC0 |
+| 연결 | ECHO | TRIG | **DHT11 S** | - | - | - |
 
 ---
 
