@@ -726,3 +726,171 @@ C,10401
 - **움직이는 동안** : `D` 는 최근 5개의 중앙값, `C` 는 마지막 1개 → 값이 다름 (1779 s : 56 vs 83, 1784 s : 192 vs 218)
 - **멈춰 있을 때** : `D` 와 `C` 환산값이 거의 같음 (1780 s : 97 = 97, 1783 s : 163 = 163, 1785 s : 1782 ≈ 1784) → TIM1 1 µs 카운트와 거리 공식이 맞음을 확인
 - `errors` 는 리셋 이후 누적값 → 1778 s 에 6 → 7 로 1회 증가 (2 ~ 3 cm 근접 구간에서 범위 밖 / 타임아웃 1회), 이후 증가 없음
+
+### 9.7 SWV 트레이스 관찰
+
+UART 를 쓰지 않고 **SWV(Serial Wire Viewer)** 로 변수 값이 바뀌는 순간을 디버거에서 그래프로 확인
+
+#### 9.7.1 CubeMX 설정
+
+`SYS → Debug = Trace Asynchronous SW` 로 바꾸면 SWO 핀이 추가 할당됨
+
+| 핀 | 기능 |
+|---|---|
+| PA13 | SWDIO |
+| PA14 | SWCLK |
+| PB3 | **SWO** (트레이스 출력) |
+
+Debug Configuration → Debugger 탭
+
+| 항목 | 설정 |
+|---|---|
+| Debug probe / Interface | ST-LINK / SWD |
+| Serial Wire Viewer | **Enable** |
+| Core Clock | **84 MHz** (SYSCLK 과 같게) |
+
+#### 9.7.2 트레이스 변수 추가
+
+`ultrasonic.h` (extern 선언)
+
+```c
+extern volatile uint16_t g_trace_echo_ticks;
+extern volatile uint8_t g_trace_echo_edge;
+extern volatile uint8_t g_trace_echo_state;
+extern volatile uint32_t g_trace_edge_count;
+```
+
+`ultrasonic.c` (정의 + 값 쓰기)
+
+```c
+volatile uint16_t g_trace_echo_ticks;
+volatile uint8_t g_trace_echo_edge;
+volatile uint8_t g_trace_echo_state;
+volatile uint32_t g_trace_edge_count;
+```
+
+```c
+void Ultrasonic_Init(void)
+{
+  ...
+  g_trace_echo_ticks = 0U;
+  g_trace_echo_edge = 0U;
+  g_trace_echo_state = 0U;
+  g_trace_edge_count = 0U;
+}
+```
+
+```c
+void Ultrasonic_Task(void)
+{
+  ...
+    case US_STATE_IDLE:
+      ...
+        s_echoStartTick = now;
+        s_state = US_STATE_WAIT_ECHO;
+        g_trace_echo_state = 2U;          // TRIG 후 ECHO 대기
+      ...
+    case US_STATE_WAIT_ECHO:
+      ...
+      else if ((now - s_echoStartTick) >= US_ECHO_TIMEOUT_MS)
+      {
+        s_errorCount++;
+        s_state = US_STATE_IDLE;
+        g_trace_echo_edge = 0U;           // 타임아웃
+        g_trace_echo_state = 0U;
+      }
+  ...
+}
+```
+
+```c
+void Ultrasonic_OnEchoEdge(void)
+{
+  ...
+  if (HAL_GPIO_ReadPin(ECHO_GPIO_Port, ECHO_Pin) == GPIO_PIN_SET)
+  {
+    if ((s_state == US_STATE_WAIT_ECHO) && (s_echoRising == 0U))
+    {
+      s_echoStartCnt = now;
+      s_echoRising = 1U;
+      g_trace_echo_edge = 1U;             // Rising
+      g_trace_echo_state = 1U;
+      g_trace_edge_count++;
+    }
+  }
+  else if (s_echoRising != 0U)
+  {
+    width = (uint16_t)(now - s_echoStartCnt);
+    s_echoRising = 0U;
+    s_echoWidthTicks = width;
+    g_trace_echo_ticks = width;           // 펄스 폭 (µs)
+    g_trace_echo_edge = 0U;               // Falling
+    g_trace_echo_state = 0U;
+    g_trace_edge_count++;
+    ...
+  }
+}
+```
+
+`stm32f4xx_it.c` (B1 버튼 트레이스)
+
+```c
+/* USER CODE BEGIN PV */
+volatile uint8_t g_trace_b1_irq;
+volatile uint32_t g_trace_b1_irq_count;
+/* USER CODE END PV */
+```
+
+```c
+/* USER CODE BEGIN 1 */
+void EXTI15_10_IRQHandler(void)
+{
+  g_trace_b1_irq ^= 1U;                   // 버튼 누를 때마다 0 ↔ 1
+  g_trace_b1_irq_count++;
+  HAL_GPIO_EXTI_IRQHandler(B1_Pin);
+}
+/* USER CODE END 1 */
+```
+
+| 변수 | 주소 | 크기 | 의미 |
+|---|---|---:|---|
+| `g_trace_b1_irq` | `0x20000114` | 1 byte | B1 인터럽트마다 토글 |
+| `g_trace_b1_irq_count` | `0x20000118` | 4 bytes | B1 인터럽트 횟수 |
+| `g_trace_echo_ticks` | `0x20000120` | 2 bytes | 마지막 ECHO 펄스 폭 (1 tick = 1 µs) |
+| `g_trace_echo_edge` | `0x20000122` | 1 byte | Rising = 1, Falling / 타임아웃 = 0 |
+| `g_trace_echo_state` | `0x20000123` | 1 byte | 2 = TRIG 후 대기, 1 = Rising 검출, 0 = Idle |
+| `g_trace_edge_count` | `0x20000124` | 4 bytes | ECHO 에지 누적 횟수 |
+
+- 주소는 빌드할 때마다 바뀔 수 있음 → 비교기에는 **변수 이름**을 먼저 넣음
+
+#### 9.7.3 Comparator 등록
+
+1. Debug 실행 → `main()` 에서 멈춘 상태
+2. `Window → Show View → SWV → SWV Data Trace Timeline Graph`
+3. SWV 뷰의 설정(톱니) 아이콘 → `데이터 트레이스` 의 Comparator 0 ~ 3 에 변수 등록 (최대 4개)
+
+| Comparator | 변수 | 액세스 | 생성 |
+|---|---|---|---|
+| 0 | `g_trace_echo_ticks` | Write | Data Value + PC |
+| 1 | `g_trace_echo_edge` | Write | Data Value + PC |
+| 2 | `g_trace_echo_state` | Write | Data Value + PC |
+| 3 | `g_trace_edge_count` | Write | Data Value + PC |
+
+4. **Start Trace** → **Resume(F8)**
+- B1 버튼을 보려면 Comparator 하나를 `g_trace_b1_irq` (크기 **Byte**) 로 바꿔서 등록
+
+#### 9.7.4 Timeline Graph 결과
+
+![SWV Timeline Graph](img/H13_step02_2_swv_timeline.png)
+
+| 변수 (색) | 그래프 모양 | 의미 |
+|---|---|---|
+| `g_trace_echo_state` (파랑) | 2 ↔ 1 ↔ 0 반복 | TRIG → ECHO 대기(2) → Rising(1) → Falling(0) 을 200 ms 마다 반복 |
+| `g_trace_echo_edge` (빨강) | 0 ↔ 1 사각파 | ECHO Rising 에서 1, Falling 에서 0 |
+| `g_trace_echo_ticks` (주황) | 대부분 약 10400 | 10400 µs × 3430 / 20000 ≈ **1.78 m** (뒤쪽 고정 물체) |
+| `g_trace_edge_count` (초록) | 계단처럼 꾸준히 증가 | 측정 1회당 Rising + Falling = 2 증가 |
+
+- 약 13.5 초 동안 `g_trace_edge_count` 가 약 330 → 470 으로 증가 → 초당 약 10 에지 = **5 Hz × 2 에지** → `US_SAMPLE_PERIOD_MS = 200` 과 일치
+- 22.3 ~ 23 s 구간 : 센서 앞에 물체를 잠깐 가져감 → `g_trace_echo_ticks` 가 약 3000 ~ 4300 으로 떨어짐 (≈ 0.5 ~ 0.7 m), 물체를 치우자 다시 약 10400 으로 복귀
+- `echo_ticks` 1.78 m 는 9.6 시리얼 출력 마지막 값 `D,...,1782` / `C,10401` 과 일치 → UART 와 SWV 결과가 같음
+- SWV 는 변수가 **써지는 순간**만 기록 → 값 사이의 선은 이전 값을 유지한 것
