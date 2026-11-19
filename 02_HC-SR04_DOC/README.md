@@ -860,6 +860,7 @@ void EXTI15_10_IRQHandler(void)
 | `g_trace_echo_edge` | `0x20000122` | 1 byte | Rising = 1, Falling / 타임아웃 = 0 |
 | `g_trace_echo_state` | `0x20000123` | 1 byte | 2 = TRIG 후 대기, 1 = Rising 검출, 0 = Idle |
 | `g_trace_edge_count` | `0x20000124` | 4 bytes | ECHO 에지 누적 횟수 |
+| `g_trace_trig_edge` | - | 1 byte | TRIG HIGH 동안 1, LOW 로 내리면 0 (9.7.6 에서 추가) |
 
 - 주소는 빌드할 때마다 바뀔 수 있음 → 비교기에는 **변수 이름**을 먼저 넣음
 
@@ -943,3 +944,65 @@ void EXTI15_10_IRQHandler(void)
 - 0.2 s 마다 **2씩** 올라가는 계단 (Rising + Falling)
 - 약 0.2 s → 8.55 s 동안 596 → 680 : 84 에지 / 8.35 s ≈ **초당 10 에지 = 5 Hz × 2**
 - 계단이 빠짐없이 일정 → 이 구간 동안 타임아웃 / 놓친 에지 없음
+
+#### 9.7.6 TRIG ↔ ECHO 타이밍 (`g_trace_trig_edge` 추가)
+
+ECHO 만 보면 측정이 **언제 시작됐는지** 알 수 없음 → TRIG 출력 순간도 트레이스 변수로 기록해서 ECHO 와 같은 그래프에 겹쳐 봄
+
+##### 코드 수정
+
+`ultrasonic.h`
+
+```c
+extern volatile uint8_t g_trace_trig_edge;
+```
+
+`ultrasonic.c`
+
+```c
+volatile uint8_t g_trace_trig_edge;
+```
+
+```c
+void Ultrasonic_Init(void)
+{
+  ...
+  g_trace_trig_edge = 0U;
+}
+```
+
+```c
+        trigStartCnt = US_GetCounter();
+        HAL_GPIO_WritePin(TRIG_GPIO_Port, TRIG_Pin, GPIO_PIN_SET);
+        g_trace_trig_edge = 1U;            // TRIG HIGH
+        while ((uint16_t)(US_GetCounter() - trigStartCnt) < US_TRIG_PULSE_US)
+        {
+        }
+        HAL_GPIO_WritePin(TRIG_GPIO_Port, TRIG_Pin, GPIO_PIN_RESET);
+        g_trace_trig_edge = 0U;            // TRIG LOW (10 µs 후)
+```
+
+- `HAL_GPIO_WritePin()` 바로 뒤에서 값을 써서 TRIG 핀이 바뀌는 순간과 맞춤
+
+##### Comparator 설정
+
+| Comparator | 변수 | 액세스 | 생성 |
+|---|---|---|---|
+| 0 | `g_trace_trig_edge` | Write | Data Value + PC |
+| 1 | `g_trace_echo_edge` | Write | Data Value + PC |
+
+##### 결과
+
+![TRIG / ECHO 타이밍](img/echo_trig_result.jpeg)
+
+- 시간축을 확대해서 측정 1회만 봄 (9.34 ~ 9.56 s)
+
+| 순서 | 시각 (대략) | 변수 | 의미 |
+|---|---|---|---|
+| ① | 약 9.400 s | `trig_edge` 0 → 1 → 0 | TRIG 10 µs 펄스 → 너무 짧아서 **세로선 1개**로 보임 |
+| ② | 바로 뒤 (약 1 ms 이내) | `echo_edge` 0 → 1 | 센서가 초음파 8개를 쏜 뒤 ECHO HIGH 시작 (Rising) |
+| ③ | 약 9.412 s | `echo_edge` 1 → 0 | 반사파 수신 → ECHO LOW (Falling) |
+
+- ECHO HIGH 폭 ≈ **약 10 ~ 11 ms** → 9.7.4 의 `echo_ticks` 약 10400 µs (≈ 1.78 m) 와 일치
+- 순서가 항상 **TRIG → ECHO Rising → ECHO Falling** → 상태 머신이 TRIG 를 낸 뒤에만 ECHO 를 받는 것을 확인
+- 다음 TRIG 는 200 ms 뒤 → 이 구간(0.22 s) 안에는 측정 1회만 보임
