@@ -894,3 +894,52 @@ void EXTI15_10_IRQHandler(void)
 - 22.3 ~ 23 s 구간 : 센서 앞에 물체를 잠깐 가져감 → `g_trace_echo_ticks` 가 약 3000 ~ 4300 으로 떨어짐 (≈ 0.5 ~ 0.7 m), 물체를 치우자 다시 약 10400 으로 복귀
 - `echo_ticks` 1.78 m 는 9.6 시리얼 출력 마지막 값 `D,...,1782` / `C,10401` 과 일치 → UART 와 SWV 결과가 같음
 - SWV 는 변수가 **써지는 순간**만 기록 → 값 사이의 선은 이전 값을 유지한 것
+
+#### 9.7.5 변수별 Timeline Graph
+
+변수를 하나씩만 켜고 따로 본 그래프
+
+##### `g_trace_echo_ticks` : ECHO 펄스 폭
+
+![g_trace_echo_ticks](img/g_trace_echo_ticks.png)
+
+- 센서 앞에 손을 댔다 뗐다 반복 → 값이 **약 10400 ↔ 약 350 ~ 650** 사이를 오감
+
+| 상태 | `echo_ticks` (µs) | 거리 (× 3430 / 20000) |
+|---|---:|---:|
+| 손 없음 | 약 10400 | 약 **1.78 m** (뒤쪽 고정 물체) |
+| 손 가까이 | 약 350 ~ 650 | 약 **6 ~ 11 cm** |
+
+- 손을 대고 있는 동안에도 600 → 550 → 450 처럼 조금씩 줄어듦 → 손이 센서 쪽으로 다가오는 움직임까지 보임
+- 값이 바로 바뀌는 계단 모양 → 200 ms 마다 측정 1회, Falling 에지에서만 값이 써짐
+
+##### `g_trace_echo_edge` : ECHO 에지
+
+![g_trace_echo_edge](img/g_trace_echo_edge.jpeg)
+
+- Rising 에서 1, Falling 에서 0 → 짧은 1 펄스가 일정하게 반복
+- 2 ~ 11 s (9 초) 동안 펄스 약 45개 → **약 5 Hz** = 200 ms 마다 측정
+- 1 인 구간 폭 = ECHO HIGH 시간 (ms 단위라 그래프에선 세로선처럼 보임)
+
+##### `g_trace_echo_state` : 측정 상태
+
+![g_trace_echo_state](img/g_trace_echo_state.jpeg)
+
+- 측정 1회마다 **2 → 1 → 0** 순서로 바뀜
+
+| 값 | 상태 | 써지는 위치 |
+|---:|---|---|
+| 2 | TRIG 출력 후 ECHO 대기 | `Ultrasonic_Task()` IDLE |
+| 1 | ECHO Rising 검출 | `Ultrasonic_OnEchoEdge()` Rising |
+| 0 | ECHO Falling (측정 완료) / 타임아웃 | `Ultrasonic_OnEchoEdge()` Falling |
+
+- 2 → 1 은 TRIG 후 수백 µs, 1 → 0 은 ECHO 폭만큼 → 시간축이 커서 거의 한 번에 바뀌는 것처럼 보임
+- 0 으로 내려온 뒤 다음 200 ms 까지 0 유지 → `HAL_Delay` 없이 메인 루프가 다른 일을 할 수 있는 구간
+
+##### `g_trace_edge_count` : 에지 누적 횟수
+
+![g_trace_edge_count](img/g_trace_edge_count.jpeg)
+
+- 0.2 s 마다 **2씩** 올라가는 계단 (Rising + Falling)
+- 약 0.2 s → 8.55 s 동안 596 → 680 : 84 에지 / 8.35 s ≈ **초당 10 에지 = 5 Hz × 2**
+- 계단이 빠짐없이 일정 → 이 구간 동안 타임아웃 / 놓친 에지 없음
