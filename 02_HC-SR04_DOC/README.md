@@ -14,6 +14,7 @@ NUCLEO-F411RE 로 HC-SR04 초음파 센서의 TRIG 신호를 만들고 오실로
 - [6. 실습 : 초음파 센서 연결 후 ECHO 측정](#6-실습--초음파-센서-연결-후-echo-측정)
 - [7. 실습 : 거리 측정 (PuTTY 출력)](#7-실습--거리-측정-putty-출력)
 - [8. 실습 : EXTI + 상태 머신 거리 측정 (STEP02)](#8-실습--exti--상태-머신-거리-측정-step02)
+- [9. 실습 : STEP02 거리측정2 (TIM1 + 중앙값 + 디버그 출력)](#9-실습--step02-거리측정2-tim1--중앙값--디버그-출력)
 
 ---
 
@@ -444,3 +445,256 @@ D,6691000,1736,1,857
 - 거리(mm) ≈ 펄스 폭(µs) × 343 / 2000 → 폭은 화면 눈금으로 읽은 대략값
 - 물체가 멀어질수록 ECHO HIGH 폭이 **옆으로 길어짐** (높이는 그대로)
 - TRIG 는 거리와 상관없이 항상 10 µs 펄스 → 거리 정보는 **ECHO 에만** 있음
+
+---
+
+## 9. 실습 : STEP02 거리측정2 (TIM1 + 중앙값 + 디버그 출력)
+
+8번(STEP02)을 **새 프로젝트(F411_LAB)** 에서 다시 구성한 버전. 타이머를 TIM1 으로 바꾸고, B1 버튼 인터럽트와 디버그 출력(`C,` 라인)을 추가
+
+- 수업 자료 : [gotree94/STM32 STEP02_거리측정2 (NUCLEO-F411RE)](https://github.com/gotree94/STM32/blob/main/NUCLEO_F411RE/00.F411_TASK_LAB/STEP02_%EA%B1%B0%EB%A6%AC%EC%B8%A1%EC%A0%952.md)
+
+### 9.1 8번과 달라진 점
+
+| 항목 | 8번 (STEP02) | 9번 (STEP02 거리측정2) |
+|---|---|---|
+| 타이머 | TIM2 (32비트) | **TIM1** (16비트, 1 tick = 1 µs) |
+| 펄스 폭 계산 | 32비트 뺄셈 | `(uint16_t)(fall - rise)` → 16비트 오버플로도 자동 처리 |
+| EXTI 콜백 | PA0 만 처리 | PA0(ECHO) + **PC13(B1)** 를 `GPIO_Pin` 으로 분기 |
+| 출력 | `D,` 라인만 | `D,` + **`C,` (ECHO 폭 TIM1 count)** 디버그 라인 |
+| 부팅 배너 | 2줄 | TIM1 클럭 / 분주 / ARR 확인 줄 추가 |
+| 거리 | 1개 | 기준값(343 m/s)과 보정값(`SetSoundSpeedX10`) 2개 계산 |
+
+### 9.2 CubeMX 설정
+
+| 핀 / 주변장치 | 설정 | 비고 |
+|---|---|---|
+| PA0 | GPIO_EXTI0, Label `ECHO`, **Rising/Falling** | 분압(1 kΩ / 2 kΩ) 후 연결 |
+| PA1 | GPIO_Output, Label `TRIG` | |
+| PC13 | GPIO_EXTI13, Label `B1`, Falling | 보드 파란 버튼 |
+| PA5 | GPIO_Output, Label `LD2` | B1 누르면 토글 |
+| PA2 / PA3 | USART2 TX / RX (115200) | printf 출력 |
+| TIM1 | Internal Clock, Prescaler **84-1**, Period **65535** | 84 MHz / 84 = 1 MHz |
+| NVIC | EXTI line0, EXTI line[15:10] Enable | |
+
+### 9.3 배선
+
+| HC-SR04 | 보드 쪽 |
+|---|---|
+| VCC | **5 V** |
+| GND | GND |
+| Trig | **A1 (PA1)** |
+| Echo | 1 kΩ — **A0 (PA0)** — 2 kΩ — GND (분압) |
+
+- ECHO 는 5 V 출력 → 분압으로 PA0 에 약 3.33 V 만 들어가게 함
+- 센서와 보드 GND 는 반드시 공통
+
+### 9.4 코드
+
+`ultrasonic.c` 는 수업 자료 그대로 사용 (`Core/Src`), `ultrasonic.h` 는 `Core/Inc` 에 추가
+
+#### 9.4.1 `ultrasonic.c` 핵심
+
+```c
+#define US_TIMER_TICKS_PER_US 1U
+#define US_MIN_ECHO_TICKS (100U * US_TIMER_TICKS_PER_US)    // 100 µs
+#define US_MAX_ECHO_TICKS (30000U * US_TIMER_TICKS_PER_US)  // 30 ms
+#define US_REFERENCE_SOUND_SPEED_X10 3430U                  // 343.0 m/s
+```
+
+```c
+void Ultrasonic_OnEchoEdge(void)     // EXTI 콜백에서 호출
+{
+  uint16_t now = US_GetCounter();    // TIM1->CNT
+
+  if (HAL_GPIO_ReadPin(ECHO_GPIO_Port, ECHO_Pin) == GPIO_PIN_SET)
+  {
+    // Rising : 시작 count 저장
+    s_echoStartCnt = now;
+    s_echoRising = 1U;
+  }
+  else if (s_echoRising != 0U)
+  {
+    // Falling : 펄스 폭 = 끝 - 시작 (16비트 뺄셈 → 오버플로 처리)
+    width = (uint16_t)(now - s_echoStartCnt);
+    s_echoWidthTicks = width;
+    s_echoDone = (width >= US_MIN_ECHO_TICKS && width <= US_MAX_ECHO_TICKS) ? 1U : 2U;
+  }
+}
+```
+
+```c
+static void US_StoreSample(uint32_t width_ticks)
+{
+  uint32_t width_us = width_ticks / US_TIMER_TICKS_PER_US;
+  uint32_t distance_ref_mm = (width_us * US_REFERENCE_SOUND_SPEED_X10) / 20000U;
+  uint32_t distance_mm = (width_us * s_soundSpeedX10) / 20000U;
+  ...
+}
+```
+
+- `/20000` = (×0.1 → m/s) → mm/µs 환산 + 왕복이므로 ÷2
+- 거리(mm) = 펄스 폭(µs) × 3430 / 20000
+
+#### 9.4.2 `main.c`
+
+```c
+/* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include "ultrasonic.h"
+/* USER CODE END Includes */
+```
+
+```c
+/* USER CODE BEGIN 0 */
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
+
+PUTCHAR_PROTOTYPE
+{
+  if (ch == '\n')
+  {
+    HAL_UART_Transmit(&huart2, (uint8_t *)"\r", 1, 0xFFFF);
+  }
+  HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
+
+  return ch;
+}
+
+static void Sensor_Task(void)
+{
+  Ultrasonic_Result result;
+  char line[80];
+
+  Ultrasonic_Task();
+
+  if (Ultrasonic_GetResult(&result) != 0U)
+  {
+    (void)snprintf(line, sizeof(line), "D,%lu,%u,%u,%lu\n",
+                   (unsigned long)result.timestamp_ms,
+                   (unsigned int)result.distance_mm,
+                   (unsigned int)result.valid,
+                   (unsigned long)result.errors);
+    printf("%s", line);
+    printf("C,%u\n", (unsigned int)Ultrasonic_GetLastEchoTicks());
+  }
+}
+/* USER CODE END 0 */
+```
+
+```c
+  /* USER CODE BEGIN 2 */
+  Ultrasonic_Init();
+  printf("\n=== F411_TASK_LAB Step 2: Ultrasonic ===\n");
+  printf("HC-SR04: TRIG=PA1, ECHO=PA0, 5 Hz sample, 1 Hz median\n");
+  printf("TIM1: PCLK2=%luHz divider=%lu ARR=%lu tick=%luHz\n",
+         (unsigned long)HAL_RCC_GetPCLK2Freq(),
+         (unsigned long)(htim1.Init.Prescaler + 1U),
+         (unsigned long)htim1.Init.Period,
+         (unsigned long)(HAL_RCC_GetPCLK2Freq() / (htim1.Init.Prescaler + 1U)));
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+    Sensor_Task();
+  }
+  /* USER CODE END 3 */
+}   // ← main() 닫는 중괄호. 지우면 안 됨 (9.6 참고)
+```
+
+```c
+/* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == ECHO_Pin)
+  {
+    Ultrasonic_OnEchoEdge();
+  }
+  else if (GPIO_Pin == B1_Pin)
+  {
+    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  }
+}
+/* USER CODE END 4 */
+```
+
+- `HAL_GPIO_EXTI_Callback()` 은 모든 EXTI 가 공유 → 반드시 `GPIO_Pin` 으로 구분
+
+#### 9.4.3 `stm32f4xx_it.c`
+
+```c
+void EXTI0_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI0_IRQn 0 */
+
+  /* USER CODE END EXTI0_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(ECHO_Pin);
+  /* USER CODE BEGIN EXTI0_IRQn 1 */
+
+  /* USER CODE END EXTI0_IRQn 1 */
+}
+
+/* USER CODE BEGIN 1 */
+void EXTI15_10_IRQHandler(void)
+{
+  HAL_GPIO_EXTI_IRQHandler(B1_Pin);
+}
+/* USER CODE END 1 */
+```
+
+- 흐름 : PA0 에지 → `EXTI0_IRQHandler` → `HAL_GPIO_EXTI_Callback` → `Ultrasonic_OnEchoEdge()`
+- 흐름 : B1 누름 → `EXTI15_10_IRQHandler` → `HAL_GPIO_EXTI_Callback` → LD2 토글
+
+### 9.5 출력 형식
+
+부팅 배너
+
+```text
+=== F411_TASK_LAB Step 2: Ultrasonic ===
+HC-SR04: TRIG=PA1, ECHO=PA0, 5 Hz sample, 1 Hz median
+TIM1: PCLK2=84000000Hz divider=84 ARR=65535 tick=1000000Hz
+```
+
+1초마다 2줄
+
+```text
+D,t_ms,distance_mm,valid,errors
+C,echo_ticks
+```
+
+| 행 | 의미 |
+|---|---|
+| `D` | 출력 시각(ms), 최근 5개 중앙값 거리(mm), 유효 여부, 누적 오류 수 |
+| `C` | 마지막 ECHO 펄스의 TIM1 count 차이 (= µs). 검증용, 확인 끝나면 지워도 됨 |
+
+- 검산 : `C` × 3430 / 20000 ≈ `D` 의 distance_mm
+
+### 9.6 트러블슈팅 : 빌드 에러 (`main()` 닫는 중괄호 누락)
+
+수업 자료의 `while` 코드 블록은 `/* USER CODE END 3 */` 에서 끝나고 **그 뒤의 `}` 가 빠져 있음**. 블록을 통째로 붙여넣으면서 CubeMX 가 만든 `main()` 의 닫는 `}` 까지 같이 지워져 빌드 에러 발생
+
+```c
+    /* USER CODE BEGIN 3 */
+    Sensor_Task();
+  }
+  /* USER CODE END 3 */
+}          // ← 이 줄이 없었음
+```
+
+- `}` 가 없으면 아래쪽 `SystemClock_Config()`, `MX_TIM1_Init()` 등이 전부 `main()` **안에** 정의된 것으로 해석됨 → main.c 컴파일 실패
+- `}` 하나 추가 후 에러 / 경고 없이 빌드 완료
+
+```text
+   text	   data	    bss	    dec	    hex	filename
+  17636	    104	   2128	  19868	   4d9c	F411_LAB.elf
+```
+
+> 코드 블록을 붙여넣을 때는 `USER CODE BEGIN/END` 주석 **바깥의 중괄호**가 지워지지 않았는지 확인

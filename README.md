@@ -6,7 +6,7 @@ NUCLEO-F411RE 보드 학습 정리
 
 - [00. 개발 환경 설정 (SETUP)](./00_SETUP_DOC) : Hardware 블록도, RCC, Clock, 프로젝트 생성
 - [01. GPIO](./01_GPIO_DOC) : GPIO 레지스터 맵, 디버거로 레지스터 확인, MODER / ODR / BSRR, PA5 · PA6 실습
-- [02. HC-SR04](./02_HC-SR04_DOC) : 초음파 센서 동작 원리, TIM1 µs 딜레이, TRIG 신호 오실로스코프 측정, EXTI + 상태 머신 거리 측정 (STEP02)
+- [02. HC-SR04](./02_HC-SR04_DOC) : 초음파 센서 동작 원리, TIM1 µs 딜레이, TRIG 신호 오실로스코프 측정, EXTI + 상태 머신 거리 측정 (STEP02), TIM1 + 중앙값 + 디버그 출력 (STEP02 거리측정2)
 
 ## 프로젝트 구조
 
